@@ -1,0 +1,14 @@
+- id: lazy-fix-check
+  name: lazy-fix check
+  description: Check that Python imports are PEP 810 lazy imports (or __lazy_modules__ on pre-3.15 targets)
+  entry: lazy-fix check
+  language: python
+  types: [python]
+  require_serial: false
+- id: lazy-fix-fix
+  name: lazy-fix fix
+  description: Rewrite Python imports into PEP 810 lazy imports (or __lazy_modules__ on pre-3.15 targets)
+  entry: lazy-fix fix
+  language: python
+  types: [python]
+  require_serial: false
