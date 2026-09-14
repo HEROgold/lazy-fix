@@ -29,10 +29,13 @@ class ImportStatement:
     is_already_lazy: bool
 
 
-def _dotted_name(node: cst.Attribute | cst.Name) -> str:
+def _dotted_name(node: cst.BaseExpression) -> str:
     if isinstance(node, cst.Name):
         return node.value
-    return f"{_dotted_name(node.value)}.{node.attr.value}"
+    if isinstance(node, cst.Attribute):
+        return f"{_dotted_name(node.value)}.{node.attr.value}"
+    msg = f"unexpected node in dotted name: {type(node).__name__}"
+    raise TypeError(msg)
 
 
 def _from_import_statements(

@@ -15,6 +15,8 @@ from packaging.specifiers import SpecifierSet
 if TYPE_CHECKING:
     from pathlib import Path
 
+_ENCODING = "utf-8"
+
 
 @dataclass
 class Config:
@@ -28,12 +30,12 @@ def load_config(root: Path) -> Config:
     """Resolve configuration for the project rooted at root."""
     standalone = root / "lazy-fix.toml"
     if standalone.is_file():
-        data = tomllib.loads(standalone.read_text(encoding="utf-8"))
+        data = tomllib.loads(standalone.read_text(encoding=_ENCODING))
         return Config(allow=data.get("allow", []), deny=data.get("deny", []))
 
     pyproject = root / "pyproject.toml"
     if pyproject.is_file():
-        data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+        data = tomllib.loads(pyproject.read_text(encoding=_ENCODING))
         tool_config = data.get("tool", {}).get("lazy-fix", {})
         return Config(allow=tool_config.get("allow", []), deny=tool_config.get("deny", []))
 
@@ -46,7 +48,7 @@ def target_supports_pep_810(root: Path) -> bool:
     if not pyproject.is_file():
         return False
 
-    data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    data = tomllib.loads(pyproject.read_text(encoding=_ENCODING))
     requires_python = data.get("project", {}).get("requires-python")
     if not requires_python:
         return False

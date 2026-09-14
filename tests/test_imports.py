@@ -114,6 +114,7 @@ def test_is_eligible_deny_overrides_allow() -> None:
 def test_split_multi_name_splits_import() -> None:
     module = _module("import os, sys\n")
     (line,) = module.body
+    assert isinstance(line, cst.SimpleStatementLine)
 
     result = split_multi_name(line)
 
@@ -123,6 +124,7 @@ def test_split_multi_name_splits_import() -> None:
 def test_split_multi_name_three_names() -> None:
     module = _module("import a, b, c\n")
     (line,) = module.body
+    assert isinstance(line, cst.SimpleStatementLine)
 
     result = split_multi_name(line)
 
@@ -132,6 +134,7 @@ def test_split_multi_name_three_names() -> None:
 def test_split_multi_name_leaves_single_name_unchanged() -> None:
     module = _module("import os\n")
     (line,) = module.body
+    assert isinstance(line, cst.SimpleStatementLine)
 
     result = split_multi_name(line)
 
@@ -141,6 +144,7 @@ def test_split_multi_name_leaves_single_name_unchanged() -> None:
 def test_split_multi_name_leaves_from_import_unchanged() -> None:
     module = _module("from numpy import array, zeros\n")
     (line,) = module.body
+    assert isinstance(line, cst.SimpleStatementLine)
 
     result = split_multi_name(line)
 
