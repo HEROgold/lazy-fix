@@ -8,6 +8,8 @@ once the project's requires-python allows 3.15+.
 
 from __future__ import annotations
 
+from typing import cast
+
 import libcst as cst
 
 _MARKER = "__lazy_modules__"
@@ -31,7 +33,14 @@ def _find_marker_index(module: cst.Module) -> int | None:
 def _string_values(value: cst.BaseExpression) -> list[str]:
     if not isinstance(value, (cst.List, cst.Tuple)):
         return []
-    return [element.value.evaluated_value for element in value.elements if isinstance(element.value, cst.SimpleString)]
+    values = []
+    for element in value.elements:
+        if not isinstance(element.value, cst.SimpleString):
+            continue
+        evaluated = element.value.evaluated_value
+        if isinstance(evaluated, str):
+            values.append(evaluated)
+    return values
 
 
 def read_lazy_modules(module: cst.Module) -> list[str] | None:
@@ -39,8 +48,9 @@ def read_lazy_modules(module: cst.Module) -> list[str] | None:
     index = _find_marker_index(module)
     if index is None:
         return None
-    (assign,) = module.body[index].body
-    return _string_values(assign.value)
+    line = cast("cst.SimpleStatementLine", module.body[index])
+    (assign,) = line.body
+    return _string_values(cast("cst.Assign", assign).value)
 
 
 def _last_import_index(module: cst.Module) -> int:
