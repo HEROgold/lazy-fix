@@ -52,7 +52,7 @@ jobs:
         if: github.event.action != 'closed'
         run: |
           uv sync --group docs
-          uv run zensical build -d site
+          uv run zensical build --clean
 
       # Only upload artifact if the push is on the main branch
       - name: Upload artifact
