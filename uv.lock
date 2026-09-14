@@ -270,6 +270,8 @@ dependencies = [
     { name = "confkit", extra = ["msgspec"] },
     { name = "herogold" },
     { name = "libcst" },
+    { name = "packaging" },
+    { name = "pathspec" },
     { name = "rich" },
 ]
 
@@ -295,6 +297,8 @@ requires-dist = [
     { name = "confkit", extras = ["msgspec"], specifier = ">=2.1.0" },
     { name = "herogold", specifier = ">=3.6.0" },
     { name = "libcst", specifier = ">=1.9.0" },
+    { name = "packaging", specifier = ">=25.0" },
+    { name = "pathspec", specifier = ">=1.1.1" },
     { name = "rich", specifier = ">=15.0.0" },
 ]
 
