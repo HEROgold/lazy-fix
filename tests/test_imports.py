@@ -5,8 +5,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import libcst as cst
+import pytest
 
-from lazy_fix.config import Config
+from lazy_fix.config import Config, ConfigError
 from lazy_fix.imports import is_eligible, iter_top_level_imports, split_multi_name
 
 if TYPE_CHECKING:
@@ -105,17 +106,43 @@ if True:
     assert stmts == []
 
 
-def test_is_eligible_requires_allow_listing() -> None:
-    config = Config(allow=["numpy"], deny=[])
-
-    assert is_eligible("numpy", config) is True
-    assert is_eligible("pandas", config) is False
+def test_is_eligible_by_default() -> None:
+    assert is_eligible("numpy", Config()) is True
 
 
-def test_is_eligible_deny_overrides_allow() -> None:
-    config = Config(allow=["numpy"], deny=["numpy"])
+def test_is_eligible_false_when_denied() -> None:
+    assert is_eligible("numpy", Config(deny=["numpy"])) is False
 
-    assert is_eligible("numpy", config) is False
+
+def test_deny_covers_submodules_but_not_lookalikes() -> None:
+    config = Config(deny=["sqlalchemy"])
+
+    assert is_eligible("sqlalchemy.orm", config) is False
+    assert is_eligible("sqlalchemyx", config) is True
+
+
+def test_more_specific_allow_beats_deny() -> None:
+    config = Config(allow=["sqlalchemy.orm"], deny=["sqlalchemy"])
+
+    assert is_eligible("sqlalchemy.orm", config) is True
+    assert is_eligible("sqlalchemy.orm.session", config) is True
+    assert is_eligible("sqlalchemy.pool", config) is False
+
+
+def test_more_specific_deny_beats_allow() -> None:
+    config = Config(allow=["sqlalchemy"], deny=["sqlalchemy.orm"])
+
+    assert is_eligible("sqlalchemy.pool", config) is True
+    assert is_eligible("sqlalchemy.orm", config) is False
+
+
+def test_future_is_never_eligible() -> None:
+    assert is_eligible("__future__", Config(allow=["__future__"])) is False
+
+
+def test_same_entry_in_allow_and_deny_is_a_config_error() -> None:
+    with pytest.raises(ConfigError, match="numpy"):
+        Config(allow=["numpy"], deny=["numpy"])
 
 
 def test_split_multi_name_splits_import() -> None:

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from lazy_fix.config import Config, load_config, target_supports_pep_810
+import pytest
+
+from lazy_fix.config import Config, ConfigError, load_config, target_supports_pep_810
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -32,6 +34,7 @@ def test_load_config_from_pyproject(tmp_path: Path) -> None:
 def test_load_config_from_standalone_file(tmp_path: Path) -> None:
     (tmp_path / "lazy-fix.toml").write_text(
         """
+        [tool.lazy-fix]
         allow = ["pandas"]
         """,
         encoding="utf-8",
@@ -39,7 +42,7 @@ def test_load_config_from_standalone_file(tmp_path: Path) -> None:
 
     config = load_config(tmp_path)
 
-    assert config == Config(allow=["pandas"], deny=[])
+    assert config == Config(allow=["pandas"])
 
 
 def test_standalone_file_takes_precedence_over_pyproject(tmp_path: Path) -> None:
@@ -52,6 +55,7 @@ def test_standalone_file_takes_precedence_over_pyproject(tmp_path: Path) -> None
     )
     (tmp_path / "lazy-fix.toml").write_text(
         """
+        [tool.lazy-fix]
         allow = ["from-standalone"]
         """,
         encoding="utf-8",
@@ -112,3 +116,48 @@ def test_target_supports_pep_810_false_when_no_requires_python(tmp_path: Path) -
     )
 
     assert target_supports_pep_810(tmp_path) is False
+
+
+def test_load_config_reads_exclude(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text('[tool.lazy-fix]\nexclude = ["build/", "gen_*.py"]\n', encoding="utf-8")
+
+    assert load_config(tmp_path).exclude == ["build/", "gen_*.py"]
+
+
+def test_pyproject_without_a_section_gives_the_defaults(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "x"\n', encoding="utf-8")
+
+    assert load_config(tmp_path) == Config()
+
+
+def test_load_config_never_writes_the_file(tmp_path: Path) -> None:
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text('[project]\nname = "x"\n\n[tool.lazy-fix]\ndeny = ["os"]\n', encoding="utf-8")
+    before = pyproject.read_bytes()
+
+    load_config(tmp_path)
+
+    assert pyproject.read_bytes() == before
+    assert not (tmp_path / "lazy-fix.toml").exists()
+
+
+def test_comma_separated_string_is_read_as_a_list(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text('[tool.lazy-fix]\ndeny = "os, sys"\n', encoding="utf-8")
+
+    assert load_config(tmp_path).deny == ["os", "sys"]
+
+
+def test_standalone_file_with_top_level_keys_warns_and_ignores_them(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    (tmp_path / "lazy-fix.toml").write_text('allow = ["pandas"]\n', encoding="utf-8")
+
+    config = load_config(tmp_path)
+
+    assert config == Config()
+    assert "[tool.lazy-fix]" in caplog.text
+
+
+def test_same_entry_in_allow_and_deny_in_a_file_is_an_error(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text('[tool.lazy-fix]\nallow = ["os"]\ndeny = ["os"]\n', encoding="utf-8")
+
+    with pytest.raises(ConfigError, match="os"):
+        load_config(tmp_path)

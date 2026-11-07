@@ -58,16 +58,19 @@ def fix(
     *,
     target_pep_810: bool,
     dry_run: bool = False,
+    project_root: Path | None = None,
 ) -> list[FixResult]:
     """Rewrite eligible imports under paths to lazy form.
 
     On Python 3.15+ targets this emits real `lazy import` syntax; on older
     targets it inserts/updates a __lazy_modules__ marker list instead.
     When dry_run is True, files are not written and only the diff is returned.
+    Files matching `exclude` in config are skipped.
     """
     results: list[FixResult] = []
     for path in paths:
         results.extend(
-            _fix_file(file, config, target_pep_810=target_pep_810, dry_run=dry_run) for file in iter_python_files(path)
+            _fix_file(file, config, target_pep_810=target_pep_810, dry_run=dry_run)
+            for file in iter_python_files(path, exclude=config.exclude, project_root=project_root)
         )
     return results

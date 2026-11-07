@@ -15,7 +15,8 @@ import libcst as cst
 _MARKER = "__lazy_modules__"
 
 
-def _find_marker_index(module: cst.Module) -> int | None:
+def find_marker_index(module: cst.Module) -> int | None:
+    """Index of the top-level `__lazy_modules__ = [...]` assignment in module.body, or None."""
     for index, line in enumerate(module.body):
         if not isinstance(line, cst.SimpleStatementLine) or len(line.body) != 1:
             continue
@@ -45,7 +46,7 @@ def _string_values(value: cst.BaseExpression) -> list[str]:
 
 def read_lazy_modules(module: cst.Module) -> list[str] | None:
     """Return the module names currently listed in __lazy_modules__, or None if absent."""
-    index = _find_marker_index(module)
+    index = find_marker_index(module)
     if index is None:
         return None
     line = cast("cst.SimpleStatementLine", module.body[index])
@@ -95,7 +96,7 @@ def _header_end_index(module: cst.Module) -> int:
 
 def is_marker_misplaced(module: cst.Module) -> bool:
     """Return True if __lazy_modules__ sits below an import it should govern."""
-    marker = _find_marker_index(module)
+    marker = find_marker_index(module)
     if marker is None:
         return False
     first = _first_governed_import_index(module)
@@ -124,11 +125,19 @@ def insert_or_update_lazy_modules(module: cst.Module, names: list[str]) -> cst.M
     An existing marker is updated in place when it is already above every
     governed import, and moved up otherwise.
     """
+    existing = read_lazy_modules(module) or []
+    return set_lazy_modules(module, existing + [name for name in names if name not in existing])
+
+
+def set_lazy_modules(module: cst.Module, names: list[str]) -> cst.Module:
+    """Make __lazy_modules__ list exactly names, placed before the first non-`__future__` import.
+
+    An existing marker is updated in place when it is already above every
+    governed import, and moved up otherwise.
+    """
     names = [name for name in names if name != "__future__"]
-    existing_index = _find_marker_index(module)
+    existing_index = find_marker_index(module)
     if existing_index is not None:
-        existing = read_lazy_modules(module) or []
-        names = existing + [name for name in names if name not in existing]
         if not is_marker_misplaced(module):
             new_body = list(module.body)
             new_body[existing_index] = _with_names(cast("cst.SimpleStatementLine", module.body[existing_index]), names)
@@ -151,3 +160,18 @@ def insert_or_update_lazy_modules(module: cst.Module, names: list[str]) -> cst.M
             new_line = new_line.with_changes(leading_lines=leading[:blanks])
             body[insert_at] = target.with_changes(leading_lines=leading[blanks:])
     return module.with_changes(body=[*body[:insert_at], new_line, *body[insert_at:]])
+
+
+def remove_lazy_modules(module: cst.Module) -> cst.Module:
+    """Delete the __lazy_modules__ marker, leaving its blank lines to the statement after it."""
+    index = find_marker_index(module)
+    if index is None:
+        return module
+    body = list(module.body)
+    removed = cast("cst.SimpleStatementLine", body.pop(index))
+    blanks = [line for line in removed.leading_lines if line.comment is None]
+    if index < len(body) and blanks:
+        follower = body[index]
+        if not getattr(follower, "leading_lines", ()):
+            body[index] = follower.with_changes(leading_lines=blanks)
+    return module.with_changes(body=body)

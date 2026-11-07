@@ -23,8 +23,8 @@ lazy-fix fix . --diff   # preview the changes without writing
 ```
 
 Recurses by default, considers `.py` files only, and skips dot-prefixed
-paths and anything `.gitignore` excludes. Which modules are eligible is
-configured via `[tool.lazy-fix]` in `pyproject.toml` or a standalone
+paths and anything `.gitignore` excludes. Every module is eligible unless
+`deny` covers it. That is configured via `[tool.lazy-fix]` in `pyproject.toml` or a standalone
 `lazy-fix.toml` — see [the docs](https://herogold.github.io/lazy-fix/).
 
 On projects whose `requires-python` doesn't allow 3.15 yet, `fix` inserts a

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from lazy_fix.check import check
 from lazy_fix.config import Config
 from lazy_fix.fix import fix
 
@@ -33,7 +34,7 @@ def test_writes_rewritten_file(tmp_path: Path) -> None:
 def test_unchanged_file_reports_no_change(tmp_path: Path) -> None:
     target = _write(tmp_path / "a.py", "import os\n")
     original = target.read_text(encoding="utf-8")
-    config = Config(allow=["sys"])
+    config = Config(deny=["os"])
 
     results = fix([tmp_path], config, target_pep_810=True)
 
@@ -115,3 +116,23 @@ def test_relative_import_in_loose_script_is_left_alone(tmp_path: Path) -> None:
 
     assert results[0].changed is False
     assert target.read_text(encoding="utf-8") == "from .action import Action\n"
+
+
+def test_excluded_files_are_not_rewritten(tmp_path: Path) -> None:
+    kept = _write(tmp_path / "keep.py", "import os\n")
+    skipped = _write(tmp_path / "build" / "gen.py", "import os\n")
+
+    fix([tmp_path], Config(exclude=["build/"]), target_pep_810=True, project_root=tmp_path)
+
+    assert kept.read_text(encoding="utf-8") == "lazy import os\n"
+    assert skipped.read_text(encoding="utf-8") == "import os\n"
+
+
+def test_fix_then_check_agree_on_marker_drift(tmp_path: Path) -> None:
+    _write(tmp_path / "a.py", 'import os\n__lazy_modules__ = ["gone"]\nimport sys\n')
+    config = Config(deny=["sys"])
+
+    assert check([tmp_path], config, target_pep_810=False)
+    fix([tmp_path], config, target_pep_810=False)
+
+    assert check([tmp_path], config, target_pep_810=False) == []

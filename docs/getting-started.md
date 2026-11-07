@@ -33,8 +33,7 @@ lazy-fix fix . --diff
 
 ## What counts as "eligible"
 
-An import is only rewritten if its source module is listed in your
-project's `allow` list (or not in `deny`, depending on how you've
-configured it) — see the [configuration reference](configuration.md).
+Every module-level import is rewritten unless your `deny` list covers its
+module. See the [configuration reference](configuration.md).
 lazy-fix never touches `from x import *`, and only rewrites module-level
 imports (not ones already inside a function body or conditional block).

@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 import libcst as cst
 
 from lazy_fix.imports import is_eligible, iter_top_level_imports, split_multi_name
-from lazy_fix.lazy_modules import insert_or_update_lazy_modules, is_marker_misplaced
+from lazy_fix.lazy_modules import is_marker_misplaced, read_lazy_modules, remove_lazy_modules, set_lazy_modules
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -50,15 +50,27 @@ def _split_lines(module: cst.Module) -> cst.Module:
 
 
 def _is_rewritable(stmt: ImportStatement, config: Config) -> bool:
-    return not stmt.is_star and not stmt.is_already_lazy and stmt.module != "__future__" and is_eligible(stmt.module, config)
+    return not stmt.is_star and not stmt.is_already_lazy and is_eligible(stmt.module, config)
 
 
 def _rewrite_legacy_marker(module: cst.Module, config: Config, path: Path | None) -> cst.Module:
-    """Record eligible imports in a `__lazy_modules__` marker list instead of rewriting them."""
+    """Make the `__lazy_modules__` marker list exactly the eligible imports, instead of rewriting them.
+
+    Missing entries are added, and stale or denied ones are removed. Entries that
+    are still eligible keep their order, and new ones follow in sorted order.
+    """
     eligible = sorted({stmt.module for stmt in iter_top_level_imports(module, path) if _is_rewritable(stmt, config)})
-    if not eligible and not is_marker_misplaced(module):
+    existing = read_lazy_modules(module)
+    if existing is None:
+        return set_lazy_modules(module, eligible) if eligible else module
+    if not eligible:
+        return remove_lazy_modules(module)
+    wanted = set(eligible)
+    desired = [name for name in dict.fromkeys(existing) if name in wanted]
+    desired += [name for name in eligible if name not in desired]
+    if desired == existing and not is_marker_misplaced(module):
         return module
-    return insert_or_update_lazy_modules(module, eligible)
+    return set_lazy_modules(module, desired)
 
 
 def _lazify_line(line: cst.BaseStatement, eligible_ids: set[int]) -> cst.BaseStatement:

@@ -16,7 +16,7 @@ from pathlib import Path
 from rich.console import Console
 
 from lazy_fix.check import check
-from lazy_fix.config import load_config, target_supports_pep_810
+from lazy_fix.config import ConfigError, load_config, target_supports_pep_810
 from lazy_fix.fix import fix
 from lazy_fix.root import find_project_root
 
@@ -46,13 +46,13 @@ def _run_check(console: Console, root: Path, paths: list[Path]) -> int:
     config = load_config(root)
     target_pep_810 = target_supports_pep_810(root)
 
-    violations = check(paths, config, target_pep_810=target_pep_810)
+    violations = check(paths, config, target_pep_810=target_pep_810, project_root=root)
     if not violations:
         console.print("[green]No violations found.[/green]")
         return 0
 
     for violation in sorted(violations, key=lambda v: (str(v.path), v.line)):
-        console.print(f"[yellow]{violation.path}:{violation.line}[/yellow] {violation.module} should be lazy")
+        console.print(f"[yellow]{violation.path}:{violation.line}[/yellow] {violation.message}")
     console.print(f"[red]{len(violations)} violation(s) found.[/red]")
     return 1
 
@@ -61,7 +61,7 @@ def _run_fix(console: Console, root: Path, paths: list[Path], *, dry_run: bool) 
     config = load_config(root)
     target_pep_810 = target_supports_pep_810(root)
 
-    results = fix(paths, config, target_pep_810=target_pep_810, dry_run=dry_run)
+    results = fix(paths, config, target_pep_810=target_pep_810, dry_run=dry_run, project_root=root)
     changed = [result for result in results if result.changed]
 
     if dry_run:
@@ -83,9 +83,13 @@ def main(argv: list[str] | None = None) -> int:
     root = find_project_root(Path.cwd())
     paths = [Path(path).resolve() for path in args.paths] or [root]
 
-    if args.command == "check":
-        return _run_check(console, root, paths)
-    return _run_fix(console, root, paths, dry_run=args.dry_run)
+    try:
+        if args.command == "check":
+            return _run_check(console, root, paths)
+        return _run_fix(console, root, paths, dry_run=args.dry_run)
+    except ConfigError as exc:
+        console.print(f"[red]lazy-fix: invalid configuration: {exc}[/red]")
+        return 2
 
 
 if __name__ == "__main__":
