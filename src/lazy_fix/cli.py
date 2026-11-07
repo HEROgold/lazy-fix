@@ -27,10 +27,10 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     check_parser = subparsers.add_parser("check", help="Report non-lazy imports")
-    check_parser.add_argument("path", nargs="?", default=None, help="File or directory to check (default: the project root)")
+    check_parser.add_argument("paths", nargs="*", help="Files or directories to check (default: the project root)")
 
     fix_parser = subparsers.add_parser("fix", help="Rewrite non-lazy imports")
-    fix_parser.add_argument("path", nargs="?", default=None, help="File or directory to fix (default: the project root)")
+    fix_parser.add_argument("paths", nargs="*", help="Files or directories to fix (default: the project root)")
     fix_parser.add_argument(
         "--diff",
         "--dry-run",
@@ -42,11 +42,11 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _run_check(console: Console, root: Path, path: Path) -> int:
+def _run_check(console: Console, root: Path, paths: list[Path]) -> int:
     config = load_config(root)
     target_pep_810 = target_supports_pep_810(root)
 
-    violations = check([path], config, target_pep_810=target_pep_810)
+    violations = check(paths, config, target_pep_810=target_pep_810)
     if not violations:
         console.print("[green]No violations found.[/green]")
         return 0
@@ -57,11 +57,11 @@ def _run_check(console: Console, root: Path, path: Path) -> int:
     return 1
 
 
-def _run_fix(console: Console, root: Path, path: Path, *, dry_run: bool) -> int:
+def _run_fix(console: Console, root: Path, paths: list[Path], *, dry_run: bool) -> int:
     config = load_config(root)
     target_pep_810 = target_supports_pep_810(root)
 
-    results = fix([path], config, target_pep_810=target_pep_810, dry_run=dry_run)
+    results = fix(paths, config, target_pep_810=target_pep_810, dry_run=dry_run)
     changed = [result for result in results if result.changed]
 
     if dry_run:
@@ -81,11 +81,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     console = Console()
     root = find_project_root(Path.cwd())
-    path = Path(args.path).resolve() if args.path is not None else root
+    paths = [Path(path).resolve() for path in args.paths] or [root]
 
     if args.command == "check":
-        return _run_check(console, root, path)
-    return _run_fix(console, root, path, dry_run=args.dry_run)
+        return _run_check(console, root, paths)
+    return _run_fix(console, root, paths, dry_run=args.dry_run)
 
 
 if __name__ == "__main__":
