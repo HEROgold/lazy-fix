@@ -66,7 +66,7 @@ def test_multiple_eligible_imports() -> None:
 def test_pre_315_target_inserts_lazy_modules_marker() -> None:
     result = _rewrite("import os\nimport sys\n", allow=["os"], target_pep_810=False)
 
-    assert result == 'import os\nimport sys\n__lazy_modules__ = ["os"]\n'
+    assert result == '__lazy_modules__ = ["os"]\nimport os\nimport sys\n'
 
 
 def test_pre_315_target_does_not_touch_import_statements() -> None:

@@ -71,7 +71,7 @@ def test_fix_pre_315_target_uses_lazy_modules_fallback(tmp_path: Path) -> None:
 
     main(["fix", str(project)])
 
-    assert target.read_text(encoding="utf-8") == 'import os\n__lazy_modules__ = ["os"]\n'
+    assert target.read_text(encoding="utf-8") == '__lazy_modules__ = ["os"]\nimport os\n'
 
 
 def test_check_path_defaults_to_current_directory() -> None:

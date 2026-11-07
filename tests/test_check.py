@@ -69,10 +69,20 @@ def test_pre_315_target_violation_when_not_in_lazy_modules(tmp_path: Path) -> No
 
 
 def test_pre_315_target_no_violation_when_listed(tmp_path: Path) -> None:
-    _write(tmp_path / "a.py", 'import os\n__lazy_modules__ = ["os"]\n')
+    _write(tmp_path / "a.py", '__lazy_modules__ = ["os"]\nimport os\n')
     config = Config(allow=["os"])
 
     assert check([tmp_path], config, target_pep_810=False) == []
+
+
+def test_pre_315_target_flags_misplaced_marker(tmp_path: Path) -> None:
+    _write(tmp_path / "a.py", 'import os\n__lazy_modules__ = ["os"]\n')
+    config = Config(allow=["os"])
+
+    violations = check([tmp_path], config, target_pep_810=False)
+
+    assert len(violations) == 1
+    assert violations[0].module == "os"
 
 
 def test_checks_multiple_files(tmp_path: Path) -> None:

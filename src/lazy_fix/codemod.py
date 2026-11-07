@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 import libcst as cst
 
 from lazy_fix.imports import is_eligible, iter_top_level_imports, split_multi_name
-from lazy_fix.lazy_modules import insert_or_update_lazy_modules
+from lazy_fix.lazy_modules import insert_or_update_lazy_modules, is_marker_misplaced
 
 if TYPE_CHECKING:
     from lazy_fix.config import Config
@@ -52,10 +52,13 @@ def _rewrite_legacy_marker(module: cst.Module, config: Config) -> cst.Module:
         {
             stmt.module
             for stmt in iter_top_level_imports(module)
-            if not stmt.is_star and not stmt.is_already_lazy and is_eligible(stmt.module, config)
+            if not stmt.is_star
+            and not stmt.is_already_lazy
+            and stmt.module != "__future__"
+            and is_eligible(stmt.module, config)
         }
     )
-    if not eligible:
+    if not eligible and not is_marker_misplaced(module):
         return module
     return insert_or_update_lazy_modules(module, eligible)
 
@@ -70,7 +73,7 @@ def _rewrite_pep810(module: cst.Module, config: Config) -> cst.Module:
     eligible_ids = {
         id(stmt.small_stmt)
         for stmt in iter_top_level_imports(module)
-        if not stmt.is_star and not stmt.is_already_lazy and is_eligible(stmt.module, config)
+        if not stmt.is_star and not stmt.is_already_lazy and stmt.module != "__future__" and is_eligible(stmt.module, config)
     }
     if not eligible_ids:
         return module

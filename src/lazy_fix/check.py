@@ -10,7 +10,7 @@ from libcst.metadata import MetadataWrapper, PositionProvider
 
 from lazy_fix.discovery import iter_python_files
 from lazy_fix.imports import is_eligible, iter_top_level_imports
-from lazy_fix.lazy_modules import read_lazy_modules
+from lazy_fix.lazy_modules import _find_marker_index, read_lazy_modules
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -34,12 +34,19 @@ def _check_file(path: Path, config: Config, *, target_pep_810: bool) -> list[Vio
     module = wrapper.module
 
     lazy_modules = set(read_lazy_modules(module) or [])
+    marker_index = _find_marker_index(module)
+    marker_line = positions[module.body[marker_index]].start.line if marker_index is not None else None
 
     violations = []
     for stmt in iter_top_level_imports(module):
         if stmt.is_star or not is_eligible(stmt.module, config):
             continue
-        already_handled = stmt.is_already_lazy if target_pep_810 else stmt.module in lazy_modules
+        if target_pep_810:
+            already_handled = stmt.is_already_lazy
+        else:
+            # A marker only governs imports that come after it.
+            governed = marker_line is not None and positions[stmt.line].start.line > marker_line
+            already_handled = governed and stmt.module in lazy_modules
         if already_handled:
             continue
         line = positions[stmt.line].start.line
