@@ -53,14 +53,53 @@ def read_lazy_modules(module: cst.Module) -> list[str] | None:
     return _string_values(cast("cst.Assign", assign).value)
 
 
-def _last_import_index(module: cst.Module) -> int:
-    last = -1
+_IMPORT_TYPES = (cst.Import, cst.ImportFrom, cst.LazyImport, cst.LazyImportFrom)
+
+
+def _is_import_line(line: cst.BaseStatement) -> bool:
+    return isinstance(line, cst.SimpleStatementLine) and any(isinstance(s, _IMPORT_TYPES) for s in line.body)
+
+
+def _is_future_import(line: cst.BaseStatement) -> bool:
+    if not isinstance(line, cst.SimpleStatementLine):
+        return False
+    return any(
+        isinstance(s, cst.ImportFrom) and isinstance(s.module, cst.Name) and s.module.value == "__future__" for s in line.body
+    )
+
+
+def _is_docstring(line: cst.BaseStatement) -> bool:
+    if not isinstance(line, cst.SimpleStatementLine) or len(line.body) != 1:
+        return False
+    expr = line.body[0]
+    return isinstance(expr, cst.Expr) and isinstance(expr.value, (cst.SimpleString, cst.ConcatenatedString))
+
+
+def _first_governed_import_index(module: cst.Module) -> int | None:
+    """Index of the first import that is not a `from __future__` import."""
     for index, line in enumerate(module.body):
-        if not isinstance(line, cst.SimpleStatementLine):
-            continue
-        if any(isinstance(s, (cst.Import, cst.ImportFrom, cst.LazyImport, cst.LazyImportFrom)) for s in line.body):
-            last = index
-    return last
+        if _is_import_line(line) and not _is_future_import(line):
+            return index
+    return None
+
+
+def _header_end_index(module: cst.Module) -> int:
+    """Index just past the module docstring and any `from __future__` imports."""
+    index = 0
+    if module.body and _is_docstring(module.body[0]):
+        index = 1
+    while index < len(module.body) and _is_future_import(module.body[index]):
+        index += 1
+    return index
+
+
+def is_marker_misplaced(module: cst.Module) -> bool:
+    """Return True if __lazy_modules__ sits below an import it should govern."""
+    marker = _find_marker_index(module)
+    if marker is None:
+        return False
+    first = _first_governed_import_index(module)
+    return first is not None and first < marker
 
 
 def _build_assignment(names: list[str]) -> cst.SimpleStatementLine:
@@ -76,16 +115,35 @@ def _build_assignment(names: list[str]) -> cst.SimpleStatementLine:
 
 
 def insert_or_update_lazy_modules(module: cst.Module, names: list[str]) -> cst.Module:
-    """Insert a __lazy_modules__ list under the imports, or update an existing one."""
+    """Place __lazy_modules__ before the first non-`__future__` import, merging in names.
+
+    An existing marker is updated in place when it is already above every
+    governed import, and moved up otherwise.
+    """
+    names = [name for name in names if name != "__future__"]
     existing_index = _find_marker_index(module)
     if existing_index is not None:
         existing = read_lazy_modules(module) or []
-        merged = existing + [name for name in names if name not in existing]
-        new_line = _build_assignment(merged)
-        new_body = list(module.body)
-        new_body[existing_index] = new_line
-        return module.with_changes(body=new_body)
+        names = existing + [name for name in names if name not in existing]
+        if not is_marker_misplaced(module):
+            new_body = list(module.body)
+            new_body[existing_index] = _build_assignment(names)
+            return module.with_changes(body=new_body)
+        body = [line for index, line in enumerate(module.body) if index != existing_index]
+        module = module.with_changes(body=body)
 
-    insert_at = _last_import_index(module) + 1
-    new_body = [*module.body[:insert_at], _build_assignment(names), *module.body[insert_at:]]
-    return module.with_changes(body=new_body)
+    insert_at = _first_governed_import_index(module)
+    if insert_at is None:
+        insert_at = _header_end_index(module)
+    new_line = _build_assignment(names)
+    body = list(module.body)
+    if insert_at < len(body):
+        target = body[insert_at]
+        leading = list(getattr(target, "leading_lines", ()))
+        blanks = 0
+        while blanks < len(leading) and leading[blanks].comment is None:
+            blanks += 1
+        if blanks:
+            new_line = new_line.with_changes(leading_lines=leading[:blanks])
+            body[insert_at] = target.with_changes(leading_lines=leading[blanks:])
+    return module.with_changes(body=[*body[:insert_at], new_line, *body[insert_at:]])

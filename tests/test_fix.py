@@ -66,7 +66,7 @@ def test_pre_315_target_inserts_marker(tmp_path: Path) -> None:
 
     fix([tmp_path], config, target_pep_810=False)
 
-    assert target.read_text(encoding="utf-8") == 'import os\n__lazy_modules__ = ["os"]\n'
+    assert target.read_text(encoding="utf-8") == '__lazy_modules__ = ["os"]\nimport os\n'
 
 
 def test_fixes_multiple_files(tmp_path: Path) -> None:
