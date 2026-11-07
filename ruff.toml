@@ -1,5 +1,5 @@
 unsafe-fixes = true
-target-version = "py315"
+target-version = "py312"
 line-length = 128
 
 [lint]
