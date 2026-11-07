@@ -1,9 +1,16 @@
 """Tests for lazy_fix.imports."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import libcst as cst
 
 from lazy_fix.config import Config
 from lazy_fix.imports import is_eligible, iter_top_level_imports, split_multi_name
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _module(source: str) -> cst.Module:
@@ -149,3 +156,72 @@ def test_split_multi_name_leaves_from_import_unchanged() -> None:
     result = split_multi_name(line)
 
     assert result == [line]
+
+
+def _package(tmp_path: Path, *files: str) -> None:
+    for name in files:
+        target = tmp_path / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("", encoding="utf-8")  # skylos: ignore[SKY-D324] test fixture inside tmp_path
+
+
+def _module_of(source: str, path: Path) -> str:
+    return iter_top_level_imports(_module(source), path)[0].module
+
+
+def test_relative_import_resolves_in_src_layout(tmp_path: Path) -> None:
+    _package(tmp_path, "src/herogold/__init__.py", "src/herogold/logic/__init__.py", "src/herogold/logic/trigger.py")
+
+    assert _module_of("from .action import X\n", tmp_path / "src/herogold/logic/trigger.py") == "herogold.logic.action"
+
+
+def test_relative_import_resolves_in_flat_layout(tmp_path: Path) -> None:
+    _package(tmp_path, "herogold/__init__.py", "herogold/trigger.py")
+
+    assert _module_of("from .action import X\n", tmp_path / "herogold/trigger.py") == "herogold.action"
+
+
+def test_parent_relative_import_resolves(tmp_path: Path) -> None:
+    _package(tmp_path, "pkg/__init__.py", "pkg/sub/__init__.py", "pkg/sub/mod.py")
+
+    assert _module_of("from ..other import X\n", tmp_path / "pkg/sub/mod.py") == "pkg.other"
+
+
+def test_bare_parent_import_resolves_to_the_package(tmp_path: Path) -> None:
+    _package(tmp_path, "pkg/__init__.py", "pkg/sub/__init__.py", "pkg/sub/mod.py")
+
+    assert _module_of("from .. import y\n", tmp_path / "pkg/sub/mod.py") == "pkg"
+
+
+def test_bare_dot_import_of_a_submodule_resolves_to_the_submodule(tmp_path: Path) -> None:
+    _package(tmp_path, "pkg/__init__.py", "pkg/mod.py", "pkg/z.py")
+
+    assert _module_of("from . import z\n", tmp_path / "pkg/mod.py") == "pkg.z"
+
+
+def test_bare_dot_import_of_a_name_resolves_to_the_package(tmp_path: Path) -> None:
+    _package(tmp_path, "pkg/__init__.py", "pkg/mod.py")
+
+    assert _module_of("from . import z\n", tmp_path / "pkg/mod.py") == "pkg"
+
+
+def test_relative_import_in_init_resolves_against_its_own_package(tmp_path: Path) -> None:
+    _package(tmp_path, "pkg/__init__.py")
+
+    assert _module_of("from .action import X\n", tmp_path / "pkg/__init__.py") == "pkg.action"
+
+
+def test_relative_import_in_loose_script_is_unresolved(tmp_path: Path) -> None:
+    _package(tmp_path, "script.py")
+
+    assert _module_of("from .action import X\n", tmp_path / "script.py") == ""
+
+
+def test_relative_import_above_the_top_package_is_unresolved(tmp_path: Path) -> None:
+    _package(tmp_path, "pkg/__init__.py", "pkg/mod.py")
+
+    assert _module_of("from ..action import X\n", tmp_path / "pkg/mod.py") == ""
+
+
+def test_unresolved_module_is_never_eligible() -> None:
+    assert not is_eligible("", Config(allow=[""]))

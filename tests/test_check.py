@@ -109,3 +109,15 @@ def test_symlinked_file_is_skipped(tmp_path: Path) -> None:
     results = check([link], config, target_pep_810=True)
 
     assert results == []
+
+
+def test_relative_import_is_checked_by_fully_qualified_name(tmp_path: Path) -> None:
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "__init__.py").write_text("", encoding="utf-8")  # skylos: ignore[SKY-D324] test fixture inside tmp_path
+    (tmp_path / "pkg" / "mod.py").write_text(
+        "from .action import Action\n", encoding="utf-8"
+    )  # skylos: ignore[SKY-D324] test fixture inside tmp_path
+
+    violations = check([tmp_path], Config(allow=["pkg.action"]), target_pep_810=False)
+
+    assert [v.module for v in violations] == ["pkg.action"]

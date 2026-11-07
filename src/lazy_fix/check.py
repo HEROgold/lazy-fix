@@ -41,7 +41,7 @@ def _check_file(path: Path, config: Config, *, target_pep_810: bool) -> list[Vio
     marker_line = positions[module.body[marker_index]].start.line if marker_index is not None else None
 
     violations = []
-    for stmt in iter_top_level_imports(module):
+    for stmt in iter_top_level_imports(module, path):
         if stmt.is_star or not is_eligible(stmt.module, config):
             continue
         if target_pep_810:

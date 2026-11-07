@@ -32,7 +32,7 @@ def _fix_file(path: Path, config: Config, *, target_pep_810: bool, dry_run: bool
 
     original = path.read_text(encoding="utf-8")
     module = cst.parse_module(original)
-    updated = module.code_for_node(rewrite_module(module, config, target_pep_810=target_pep_810))
+    updated = module.code_for_node(rewrite_module(module, config, target_pep_810=target_pep_810, path=path))
 
     if updated == original:
         return FixResult(path=path, changed=False, diff="")
