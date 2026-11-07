@@ -28,6 +28,9 @@ class Violation:
 
 
 def _check_file(path: Path, config: Config, *, target_pep_810: bool) -> list[Violation]:
+    if path.is_symlink() or not path.is_file():
+        return []
+
     source = path.read_text(encoding="utf-8")
     wrapper = MetadataWrapper(cst.parse_module(source))
     positions = wrapper.resolve(PositionProvider)

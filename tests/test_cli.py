@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 def _write(path: Path, source: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(source, encoding="utf-8")
+    path.write_text(source, encoding="utf-8")  # skylos: ignore[SKY-D324] test fixture inside tmp_path
     return path
 
 
