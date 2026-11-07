@@ -41,8 +41,10 @@ jobs:
         with:
           enable-cache: true
 
+      # Only main deploys to Pages. PR previews go to the gh-pages branch, and the
+      # workflow token cannot create the Pages site, so skip this step on PRs.
       - name: Setup Pages
-        if: github.event.action != 'closed'
+        if: github.ref == 'refs/heads/main'
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
         with:
           # Create the Pages site on first run instead of failing when it does not exist yet.
