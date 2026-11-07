@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+      <url>
+        <loc>https://herogold.github.io/lazy-fix/</loc>
+      </url>
+      <url>
+        <loc>https://herogold.github.io/lazy-fix/getting-started/</loc>
+      </url>
+      <url>
+        <loc>https://herogold.github.io/lazy-fix/cli/</loc>
+      </url>
+      <url>
+        <loc>https://herogold.github.io/lazy-fix/configuration/</loc>
+      </url>
+      <url>
+        <loc>https://herogold.github.io/lazy-fix/pre-commit/</loc>
+      </url>
+      <url>
+        <loc>https://herogold.github.io/lazy-fix/pep810/</loc>
+      </url>
+</urlset>
