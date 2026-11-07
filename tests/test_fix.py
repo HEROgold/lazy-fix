@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pytest
+
 from lazy_fix.config import Config
 from lazy_fix.fix import fix
 
@@ -13,7 +15,7 @@ if TYPE_CHECKING:
 
 def _write(path: Path, source: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(source, encoding="utf-8")
+    path.write_text(source, encoding="utf-8")  # skylos: ignore[SKY-D324] test fixture inside tmp_path
     return path
 
 
@@ -78,3 +80,18 @@ def test_fixes_multiple_files(tmp_path: Path) -> None:
 
     assert a.read_text(encoding="utf-8") == "lazy import os\n"
     assert b.read_text(encoding="utf-8") == "lazy import sys\n"
+
+
+def test_symlinked_file_is_skipped(tmp_path: Path) -> None:
+    real = _write(tmp_path / "real.txt", "import os\n")
+    link = tmp_path / "link.py"
+    try:
+        link.symlink_to(real)
+    except OSError:
+        pytest.skip("symlinks unavailable")
+    config = Config(allow=["os"])
+
+    results = fix([link], config, target_pep_810=True)
+
+    assert real.read_text(encoding="utf-8") == "import os\n"
+    assert all(not r.changed for r in results)
