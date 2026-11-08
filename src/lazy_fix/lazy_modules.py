@@ -148,7 +148,11 @@ def set_lazy_modules(module: cst.Module, names: list[str]) -> cst.Module:
     insert_at = _first_governed_import_index(module)
     if insert_at is None:
         insert_at = _header_end_index(module)
-    new_line = _build_assignment(names)
+    return _insert_line(module, insert_at, _build_assignment(names))
+
+
+def _insert_line(module: cst.Module, insert_at: int, new_line: cst.SimpleStatementLine) -> cst.Module:
+    """Insert new_line at insert_at, taking over the blank lines that led the statement it displaces."""
     body = list(module.body)
     if insert_at < len(body):
         target = body[insert_at]

@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from lazy_fix.config import Config
+    from lazy_fix.imports import ImportStatement
 
 
 class ViolationKind(StrEnum):
@@ -49,36 +50,51 @@ class Violation:
         return f"{self.module} should be lazy"
 
 
-def _legacy_violations(path: Path, wrapper: MetadataWrapper, config: Config) -> list[Violation]:
-    """Drift between the file's `__lazy_modules__` marker and the eligible imports it should list."""
-    module = wrapper.module
-    positions = wrapper.resolve(PositionProvider)
-    listed = read_lazy_modules(module)
-    marker_index = find_marker_index(module)
-    marker_line = positions[module.body[marker_index]].start.line if marker_index is not None else None
-
-    eligible = [
+def _eligible_imports(module: cst.Module, path: Path, config: Config) -> list[ImportStatement]:
+    return [
         stmt
         for stmt in iter_top_level_imports(module, path)
         if not stmt.is_star and not stmt.is_already_lazy and is_eligible(stmt.module, config)
     ]
-    violations = [
-        Violation(path=path, line=positions[stmt.line].start.line, module=stmt.module)
-        for stmt in eligible
-        if stmt.module not in (listed or [])
-    ]
-    if marker_line is None:
-        return violations
 
+
+def _marker_violations(
+    path: Path,
+    module: cst.Module,
+    listed: list[str] | None,
+    marker_line: int,
+    eligible_modules: set[str],
+) -> list[Violation]:
+    """Misplaced and stale findings for a `__lazy_modules__` marker found on marker_line."""
+    violations: list[Violation] = []
     if is_marker_misplaced(module):
         violations.append(Violation(path=path, line=marker_line, module="__lazy_modules__", kind=ViolationKind.MISPLACED))
-    eligible_modules = {stmt.module for stmt in eligible}
     violations.extend(
         Violation(path=path, line=marker_line, module=name, kind=ViolationKind.STALE)
         for name in dict.fromkeys(listed or [])
         if name not in eligible_modules
     )
     return violations
+
+
+def _legacy_violations(path: Path, wrapper: MetadataWrapper, config: Config) -> list[Violation]:
+    """Drift between the file's `__lazy_modules__` marker and the eligible imports it should list."""
+    module = wrapper.module
+    positions = wrapper.resolve(PositionProvider)
+    listed = read_lazy_modules(module)
+    marker_index = find_marker_index(module)
+
+    eligible = _eligible_imports(module, path, config)
+    violations = [
+        Violation(path=path, line=positions[stmt.line].start.line, module=stmt.module)
+        for stmt in eligible
+        if stmt.module not in (listed or [])
+    ]
+    if marker_index is None:
+        return violations
+
+    marker_line = positions[module.body[marker_index]].start.line
+    return violations + _marker_violations(path, module, listed, marker_line, {stmt.module for stmt in eligible})
 
 
 def _check_file(path: Path, config: Config, *, target_pep_810: bool) -> list[Violation]:
@@ -94,8 +110,7 @@ def _check_file(path: Path, config: Config, *, target_pep_810: bool) -> list[Vio
     positions = wrapper.resolve(PositionProvider)
     return [
         Violation(path=path, line=positions[stmt.line].start.line, module=stmt.module)
-        for stmt in iter_top_level_imports(wrapper.module, path)
-        if not stmt.is_star and not stmt.is_already_lazy and is_eligible(stmt.module, config)
+        for stmt in _eligible_imports(wrapper.module, path, config)
     ]
 
 
