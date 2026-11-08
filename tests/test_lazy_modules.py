@@ -100,3 +100,17 @@ def test_update_preserves_existing_order() -> None:
     result = insert_or_update_lazy_modules(module, ["json"])
 
     assert read_lazy_modules(result) == ["sys", "os", "json"]
+
+
+def test_update_in_place_keeps_blank_line_after_future_import() -> None:
+    source = 'from __future__ import annotations\n\n__lazy_modules__ = ["fastapi"]\n\nfrom datetime import datetime\n'
+
+    assert _insert(source, ["datetime"]) == (
+        'from __future__ import annotations\n\n__lazy_modules__ = ["fastapi", "datetime"]\n\nfrom datetime import datetime\n'
+    )
+
+
+def test_update_in_place_keeps_trailing_comment() -> None:
+    source = '__lazy_modules__ = ["os"]  # keep\nimport os\n'
+
+    assert _insert(source, ["sys"]) == '__lazy_modules__ = ["os", "sys"]  # keep\nimport os\n'
