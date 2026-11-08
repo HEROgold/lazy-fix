@@ -58,26 +58,37 @@ def _is_submodule(directory: Path, name: str) -> bool:
     return (directory / f"{name}.py").is_file() or (directory / name / "__init__.py").is_file()
 
 
-def _resolve_relative(small_stmt: cst.ImportFrom | cst.LazyImportFrom, path: Path | None) -> str:
-    """Fully qualified module a relative `from` import names, or "" when it can't be worked out."""
-    if path is None:
-        return ""
+def _relative_base(small_stmt: cst.ImportFrom | cst.LazyImportFrom, path: Path) -> list[str] | None:
+    """Package parts a relative import starts from, or None when it climbs past the top package."""
     package = package_of(path)
     parts = package.split(".") if package else []
     up = len(small_stmt.relative) - 1
     if not parts or up >= len(parts):
+        return None
+    return parts[: len(parts) - up]
+
+
+def _single_imported_name(small_stmt: cst.ImportFrom | cst.LazyImportFrom) -> str | None:
+    names = small_stmt.names
+    if isinstance(names, cst.ImportStar) or len(names) != 1 or not isinstance(names[0].name, cst.Name):
+        return None
+    return names[0].name.value
+
+
+def _resolve_relative(small_stmt: cst.ImportFrom | cst.LazyImportFrom, path: Path | None) -> str:
+    """Fully qualified module a relative `from` import names, or "" when it can't be worked out."""
+    if path is None:
         return ""
-    base = parts[: len(parts) - up]
+    base = _relative_base(small_stmt, path)
+    if base is None:
+        return ""
     if small_stmt.module is not None:
         return ".".join([*base, _dotted_name(small_stmt.module)])
     directory = path.resolve().parent
-    for _ in range(up):
+    for _ in range(len(small_stmt.relative) - 1):
         directory = directory.parent
-    names = small_stmt.names
-    if isinstance(names, cst.ImportStar) or len(names) != 1 or not isinstance(names[0].name, cst.Name):
-        return ".".join(base)
-    name = names[0].name.value
-    return ".".join([*base, name]) if _is_submodule(directory, name) else ".".join(base)
+    name = _single_imported_name(small_stmt)
+    return ".".join([*base, name]) if name is not None and _is_submodule(directory, name) else ".".join(base)
 
 
 def _from_import_statements(
