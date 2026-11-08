@@ -102,16 +102,20 @@ def is_marker_misplaced(module: cst.Module) -> bool:
     return first is not None and first < marker
 
 
+def _marker_list(names: list[str]) -> cst.List:
+    return cst.List(elements=[cst.Element(value=cst.SimpleString(f'"{name}"')) for name in names])
+
+
 def _build_assignment(names: list[str]) -> cst.SimpleStatementLine:
-    elements = [cst.Element(value=cst.SimpleString(f'"{name}"')) for name in names]
     return cst.SimpleStatementLine(
-        body=[
-            cst.Assign(
-                targets=[cst.AssignTarget(target=cst.Name(_MARKER))],
-                value=cst.List(elements=elements),
-            )
-        ]
+        body=[cst.Assign(targets=[cst.AssignTarget(target=cst.Name(_MARKER))], value=_marker_list(names))]
     )
+
+
+def _with_names(line: cst.SimpleStatementLine, names: list[str]) -> cst.SimpleStatementLine:
+    """Replace the marker's list, keeping its blank lines, comments and trailing whitespace."""
+    (assign,) = line.body
+    return line.with_changes(body=[cast("cst.Assign", assign).with_changes(value=_marker_list(names))])
 
 
 def insert_or_update_lazy_modules(module: cst.Module, names: list[str]) -> cst.Module:
@@ -127,7 +131,7 @@ def insert_or_update_lazy_modules(module: cst.Module, names: list[str]) -> cst.M
         names = existing + [name for name in names if name not in existing]
         if not is_marker_misplaced(module):
             new_body = list(module.body)
-            new_body[existing_index] = _build_assignment(names)
+            new_body[existing_index] = _with_names(cast("cst.SimpleStatementLine", module.body[existing_index]), names)
             return module.with_changes(body=new_body)
         body = [line for index, line in enumerate(module.body) if index != existing_index]
         module = module.with_changes(body=body)
