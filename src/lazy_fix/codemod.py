@@ -65,12 +65,17 @@ def _rewrite_legacy_marker(module: cst.Module, config: Config, path: Path | None
         return set_lazy_modules(module, eligible) if eligible else module
     if not eligible:
         return remove_lazy_modules(module)
-    wanted = set(eligible)
-    desired = [name for name in dict.fromkeys(existing) if name in wanted]
-    desired += [name for name in eligible if name not in desired]
+    desired = _merge_marker_entries(existing, eligible)
     if desired == existing and not is_marker_misplaced(module):
         return module
     return set_lazy_modules(module, desired)
+
+
+def _merge_marker_entries(existing: list[str], eligible: list[str]) -> list[str]:
+    """Keep the entries that are still eligible in their order, then append the new ones sorted."""
+    wanted = set(eligible)
+    desired = [name for name in dict.fromkeys(existing) if name in wanted]
+    return desired + [name for name in eligible if name not in desired]
 
 
 def _lazify_line(line: cst.BaseStatement, eligible_ids: set[int]) -> cst.BaseStatement:
