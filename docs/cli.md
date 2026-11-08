@@ -1,12 +1,23 @@
 # CLI reference
 
 ```bash
-lazy-fix check <path> [options]
-lazy-fix fix <path> [options]
+lazy-fix check [path ...] [options]
+lazy-fix fix [path ...] [options]
 ```
 
-`<path>` is recursed into by default; only `.py` files are considered.
-Dot-prefixed directories/files and `.gitignore`-matched paths are skipped.
+Each `path` is a file or a directory, and directories are recursed into. Only
+`.py` files are considered. Dot-prefixed directories/files and
+`.gitignore`-matched paths are skipped.
+
+## Project root
+
+With no `path`, lazy-fix scans the whole project from its root. It finds the
+root by walking up from the current directory. The first directory holding a
+`lazy-fix.toml` or a `pyproject.toml` is the root. With neither, the git root
+is used, and with no git repository, the current directory.
+
+Configuration is always read from the project root, including when you pass
+explicit paths. Paths only limit what is scanned.
 
 ## `check`
 

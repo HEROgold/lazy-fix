@@ -23,5 +23,6 @@ repos:
       - id: lazy-fix-fix
 ```
 
-Both hooks only run against `.py` files that pre-commit passes them, on top
-of lazy-fix's own dot-prefix and `.gitignore` skipping.
+Both hooks only run against the staged `.py` files that pre-commit passes
+them, on top of lazy-fix's own dot-prefix and `.gitignore` skipping. They
+accept any number of files, and read configuration from the project root.

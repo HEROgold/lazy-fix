@@ -80,7 +80,7 @@ def test_fix_pre_315_target_uses_lazy_modules_fallback(tmp_path: Path, monkeypat
 def test_check_path_defaults_to_the_project_root() -> None:
     args = build_parser().parse_args(["check"])
 
-    assert args.path is None
+    assert args.paths == []
 
 
 def test_fix_dry_run_defaults_to_false() -> None:
@@ -109,3 +109,39 @@ def test_explicit_path_limits_the_scan_but_not_the_config(tmp_path: Path, monkey
     monkeypatch.chdir(clean.parent)
 
     assert main(["check", str(clean)]) == 0
+
+
+def test_check_accepts_several_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    project = _project(tmp_path, monkeypatch)
+    first = _write(project / "a.py", "lazy import os\n")
+    second = _write(project / "b.py", "lazy import os\n")
+
+    assert main(["check", str(first), str(second)]) == 0
+
+
+def test_check_reports_violations_across_several_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = _project(tmp_path, monkeypatch)
+    first = _write(project / "a.py", "import os\n")
+    second = _write(project / "b.py", "import os\n")
+
+    assert main(["check", str(first), str(second)]) == 1
+    assert "2 violation(s) found." in capsys.readouterr().out
+
+
+def test_fix_accepts_several_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    project = _project(tmp_path, monkeypatch)
+    first = _write(project / "a.py", "import os\n")
+    second = _write(project / "b.py", "import os\n")
+
+    assert main(["fix", str(first), str(second)]) == 0
+    assert first.read_text(encoding="utf-8") == "lazy import os\n"
+    assert second.read_text(encoding="utf-8") == "lazy import os\n"
+
+
+def test_config_comes_from_the_project_root_for_nested_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    project = _project(tmp_path, monkeypatch)
+    nested = _write(project / "src" / "pkg" / "mod.py", "import os\n")
+
+    assert main(["check", str(nested)]) == 1
