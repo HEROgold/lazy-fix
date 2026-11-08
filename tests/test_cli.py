@@ -145,3 +145,22 @@ def test_config_comes_from_the_project_root_for_nested_files(tmp_path: Path, mon
     nested = _write(project / "src" / "pkg" / "mod.py", "import os\n")
 
     assert main(["check", str(nested)]) == 1
+
+
+def test_same_entry_in_allow_and_deny_exits_two(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    _write(tmp_path / "pyproject.toml", '[tool.lazy-fix]\nallow = ["os"]\ndeny = ["os"]\n')
+    _write(tmp_path / "a.py", "import os\n")
+
+    assert main(["check"]) == 2
+    assert "invalid configuration" in capsys.readouterr().out
+
+
+def test_exclude_setting_skips_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    _write(tmp_path / "pyproject.toml", '[project]\nrequires-python = ">=3.15"\n\n[tool.lazy-fix]\nexclude = ["build/"]\n')
+    _write(tmp_path / "build" / "gen.py", "import os\n")
+
+    assert main(["check"]) == 0

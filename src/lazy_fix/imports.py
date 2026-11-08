@@ -153,11 +153,32 @@ def iter_top_level_imports(module: cst.Module, path: Path | None = None) -> list
     return statements
 
 
+def _match_depth(module_name: str, entries: list[str]) -> int:
+    """Count the dotted parts of the most specific entry covering module_name, or 0 for none.
+
+    An entry covers itself and every module below it: `sqlalchemy` covers
+    `sqlalchemy` and `sqlalchemy.orm`, but not `sqlalchemyx`.
+    """
+    depth = 0
+    for entry in entries:
+        if module_name == entry or module_name.startswith(f"{entry}."):
+            depth = max(depth, entry.count(".") + 1)
+    return depth
+
+
 def is_eligible(module_name: str, config: Config) -> bool:
-    """Whether module_name should be made lazy: allow-listed and not denied."""
-    if not module_name or module_name in config.deny:
+    """Whether module_name should be made lazy.
+
+    Every module is eligible unless `deny` covers it. When both `allow` and
+    `deny` cover it, the more specific entry wins, so `deny = ["sqlalchemy"]`
+    with `allow = ["sqlalchemy.orm"]` makes `sqlalchemy.orm` lazy and
+    `sqlalchemy.pool` not. `__future__` is never eligible, because a lazy
+    future import is invalid, and neither is a module that could not be named.
+    """
+    if not module_name or module_name == "__future__":
         return False
-    return module_name in config.allow
+    denied = _match_depth(module_name, config.deny)
+    return not denied or _match_depth(module_name, config.allow) > denied
 
 
 def split_multi_name(line: cst.SimpleStatementLine) -> list[cst.SimpleStatementLine]:

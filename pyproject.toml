@@ -58,10 +58,11 @@ Repository = "https://github.com/HEROgold/lazy-fix"
 Issues = "https://github.com/HEROgold/lazy-fix/issues"
 
 [tool.lazy-fix]
-# Module names eligible to be made lazy. Matched on the source module only,
-# e.g. listing "numpy" governs both `import numpy` and `from numpy import array`.
+# Every module is eligible unless `deny` covers it. An entry covers the module
+# and everything below it, and the more specific of `deny` and `allow` wins.
 allow = []
 deny = []
+exclude = []
 
 [tool.skylos]
 # SKY-D223 "undeclared dependency": Skylos reads declared dependencies from
