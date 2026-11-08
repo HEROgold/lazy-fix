@@ -15,7 +15,10 @@ from lazy_fix.imports import is_eligible, iter_top_level_imports, split_multi_na
 from lazy_fix.lazy_modules import insert_or_update_lazy_modules, is_marker_misplaced
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from lazy_fix.config import Config
+    from lazy_fix.imports import ImportStatement
 
 
 def _to_lazy(small_stmt: cst.Import | cst.ImportFrom) -> cst.LazyImport | cst.LazyImportFrom:
@@ -46,62 +49,55 @@ def _split_lines(module: cst.Module) -> cst.Module:
     return module.with_changes(body=new_body)
 
 
-def _rewrite_legacy_marker(module: cst.Module, config: Config) -> cst.Module:
+def _is_rewritable(stmt: ImportStatement, config: Config) -> bool:
+    return not stmt.is_star and not stmt.is_already_lazy and stmt.module != "__future__" and is_eligible(stmt.module, config)
+
+
+def _rewrite_legacy_marker(module: cst.Module, config: Config, path: Path | None) -> cst.Module:
     """Record eligible imports in a `__lazy_modules__` marker list instead of rewriting them."""
-    eligible = sorted(
-        {
-            stmt.module
-            for stmt in iter_top_level_imports(module)
-            if not stmt.is_star
-            and not stmt.is_already_lazy
-            and stmt.module != "__future__"
-            and is_eligible(stmt.module, config)
-        }
-    )
+    eligible = sorted({stmt.module for stmt in iter_top_level_imports(module, path) if _is_rewritable(stmt, config)})
     if not eligible and not is_marker_misplaced(module):
         return module
     return insert_or_update_lazy_modules(module, eligible)
 
 
-def _rewrite_pep810(module: cst.Module, config: Config) -> cst.Module:
+def _lazify_line(line: cst.BaseStatement, eligible_ids: set[int]) -> cst.BaseStatement:
+    if not isinstance(line, cst.SimpleStatementLine) or not any(id(small_stmt) in eligible_ids for small_stmt in line.body):
+        return line
+    return line.with_changes(
+        body=[
+            _to_lazy(small_stmt)
+            if isinstance(small_stmt, (cst.Import, cst.ImportFrom)) and id(small_stmt) in eligible_ids
+            else small_stmt
+            for small_stmt in line.body
+        ]
+    )
+
+
+def _rewrite_pep810(module: cst.Module, config: Config, path: Path | None) -> cst.Module:
     """Rewrite eligible imports directly to `lazy import` / `lazy from ... import ...`."""
     # Keyed by id(small_stmt), not the small_stmt itself: it's a dataclass
     # with structural equality, so two textually-identical imports (e.g.
     # `import os` appearing twice) would otherwise collide. A line can hold
     # more than one small_stmt (`import os; import sys`), so each is
     # rewritten independently rather than replacing the whole line.
-    eligible_ids = {
-        id(stmt.small_stmt)
-        for stmt in iter_top_level_imports(module)
-        if not stmt.is_star and not stmt.is_already_lazy and stmt.module != "__future__" and is_eligible(stmt.module, config)
-    }
+    eligible_ids = {id(stmt.small_stmt) for stmt in iter_top_level_imports(module, path) if _is_rewritable(stmt, config)}
     if not eligible_ids:
         return module
 
-    new_body: list[cst.BaseStatement] = []
-    for line in module.body:
-        if isinstance(line, cst.SimpleStatementLine) and any(id(small_stmt) in eligible_ids for small_stmt in line.body):
-            new_small_stmts = [
-                _to_lazy(small_stmt)
-                if isinstance(small_stmt, (cst.Import, cst.ImportFrom)) and id(small_stmt) in eligible_ids
-                else small_stmt
-                for small_stmt in line.body
-            ]
-            new_body.append(line.with_changes(body=new_small_stmts))
-        else:
-            new_body.append(line)
-    return module.with_changes(body=new_body)
+    return module.with_changes(body=[_lazify_line(line, eligible_ids) for line in module.body])
 
 
-def rewrite_module(module: cst.Module, config: Config, *, target_pep_810: bool) -> cst.Module:
+def rewrite_module(module: cst.Module, config: Config, *, target_pep_810: bool, path: Path | None = None) -> cst.Module:
     """Rewrite eligible top-level imports to lazy form.
 
     On a PEP 810 target, eligible imports become `lazy import` / `lazy from
     ... import ...` statements directly. On an older target, the module is
     left untouched and its eligible module names are instead inserted into
-    a `__lazy_modules__` marker list (see lazy_modules.py).
+    a `__lazy_modules__` marker list (see lazy_modules.py). path is the file
+    the module came from, used to resolve relative imports.
     """
     module = _split_lines(module)
     if not target_pep_810:
-        return _rewrite_legacy_marker(module, config)
-    return _rewrite_pep810(module, config)
+        return _rewrite_legacy_marker(module, config, path)
+    return _rewrite_pep810(module, config, path)

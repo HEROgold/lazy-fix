@@ -95,3 +95,23 @@ def test_symlinked_file_is_skipped(tmp_path: Path) -> None:
 
     assert real.read_text(encoding="utf-8") == "import os\n"
     assert all(not r.changed for r in results)
+
+
+def test_relative_import_is_recorded_under_its_fully_qualified_name(tmp_path: Path) -> None:
+    _write(tmp_path / "pkg" / "__init__.py", "")
+    target = _write(tmp_path / "pkg" / "mod.py", "from .action import Action\n")
+    config = Config(allow=["pkg.action"])
+
+    fix([tmp_path], config, target_pep_810=False)
+
+    assert target.read_text(encoding="utf-8") == '__lazy_modules__ = ["pkg.action"]\nfrom .action import Action\n'
+
+
+def test_relative_import_in_loose_script_is_left_alone(tmp_path: Path) -> None:
+    target = _write(tmp_path / "script.py", "from .action import Action\n")
+    config = Config(allow=["action", ""])
+
+    results = fix([tmp_path], config, target_pep_810=False)
+
+    assert results[0].changed is False
+    assert target.read_text(encoding="utf-8") == "from .action import Action\n"

@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING
 import libcst as cst
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from lazy_fix.config import Config
 
 
@@ -38,14 +40,69 @@ def _dotted_name(node: cst.BaseExpression) -> str:
     raise TypeError(msg)
 
 
+def package_of(path: Path) -> str | None:
+    """Dotted name of the package that holds the file at path, or None for a loose script.
+
+    Follows `__init__.py` files upward from the file's directory, which works for
+    src and flat layouts alike. For an `__init__.py` this is the package itself.
+    """
+    parts: list[str] = []
+    directory = path.resolve().parent
+    while (directory / "__init__.py").is_file():
+        parts.append(directory.name)
+        directory = directory.parent
+    return ".".join(reversed(parts)) or None
+
+
+def _is_submodule(directory: Path, name: str) -> bool:
+    return (directory / f"{name}.py").is_file() or (directory / name / "__init__.py").is_file()
+
+
+def _relative_base(small_stmt: cst.ImportFrom | cst.LazyImportFrom, path: Path) -> list[str] | None:
+    """Package parts a relative import starts from, or None when it climbs past the top package."""
+    package = package_of(path)
+    parts = package.split(".") if package else []
+    up = len(small_stmt.relative) - 1
+    if not parts or up >= len(parts):
+        return None
+    return parts[: len(parts) - up]
+
+
+def _single_imported_name(small_stmt: cst.ImportFrom | cst.LazyImportFrom) -> str | None:
+    names = small_stmt.names
+    if isinstance(names, cst.ImportStar) or len(names) != 1 or not isinstance(names[0].name, cst.Name):
+        return None
+    return names[0].name.value
+
+
+def _resolve_relative(small_stmt: cst.ImportFrom | cst.LazyImportFrom, path: Path | None) -> str:
+    """Fully qualified module a relative `from` import names, or "" when it can't be worked out."""
+    if path is None:
+        return ""
+    base = _relative_base(small_stmt, path)
+    if base is None:
+        return ""
+    if small_stmt.module is not None:
+        return ".".join([*base, _dotted_name(small_stmt.module)])
+    directory = path.resolve().parent
+    for _ in range(len(small_stmt.relative) - 1):
+        directory = directory.parent
+    name = _single_imported_name(small_stmt)
+    return ".".join([*base, name]) if name is not None and _is_submodule(directory, name) else ".".join(base)
+
+
 def _from_import_statements(
     line: cst.SimpleStatementLine,
     small_stmt: cst.ImportFrom | cst.LazyImportFrom,
+    path: Path | None,
 ) -> list[ImportStatement]:
-    # `from . import x` / `from .. import x` have no absolute module name;
-    # such statements can never match a configured module name, so they're
-    # simply never eligible.
-    module = _dotted_name(small_stmt.module) if small_stmt.module is not None else ""
+    # PEP 810 matches __lazy_modules__ against the fully qualified module name,
+    # so a relative import is recorded under the name it resolves to. One whose
+    # package can't be worked out gets "" and is never eligible.
+    if small_stmt.relative:
+        module = _resolve_relative(small_stmt, path)
+    else:
+        module = _dotted_name(small_stmt.module) if small_stmt.module is not None else ""
     return [
         ImportStatement(
             line=line,
@@ -76,8 +133,10 @@ def _import_statements(
     ]
 
 
-def iter_top_level_imports(module: cst.Module) -> list[ImportStatement]:
+def iter_top_level_imports(module: cst.Module, path: Path | None = None) -> list[ImportStatement]:
     """List every import in module, one entry per named module.
+
+    path is the file the module came from; it is needed to resolve relative imports.
 
     Only walks module.body directly - never recurses into FunctionDef, If,
     Try, etc. - which is what keeps this module-level-only.
@@ -90,13 +149,13 @@ def iter_top_level_imports(module: cst.Module) -> list[ImportStatement]:
             if isinstance(small_stmt, (cst.Import, cst.LazyImport)):
                 statements.extend(_import_statements(line, small_stmt))
             elif isinstance(small_stmt, (cst.ImportFrom, cst.LazyImportFrom)):
-                statements.extend(_from_import_statements(line, small_stmt))
+                statements.extend(_from_import_statements(line, small_stmt, path))
     return statements
 
 
 def is_eligible(module_name: str, config: Config) -> bool:
     """Whether module_name should be made lazy: allow-listed and not denied."""
-    if module_name in config.deny:
+    if not module_name or module_name in config.deny:
         return False
     return module_name in config.allow
 
